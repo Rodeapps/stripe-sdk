@@ -1,3 +1,5 @@
+
+
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
@@ -8,9 +10,10 @@ import '../screens/payment_methods_screen.dart';
 /// A managed repository for payment methods.
 /// This is the preferred way to work with payment methods when using Flutter.
 /// The store will only refresh itself if there are active listeners.
+///
+///
 class PaymentMethodStore extends ChangeNotifier {
   final List<PaymentMethod> paymentMethods = [];
-  bool isLoading = false;
 
   /// The customer session the store operates on.
   final CustomerSession _customerSession;
@@ -37,37 +40,31 @@ class PaymentMethodStore extends ChangeNotifier {
   }
 
   /// Attach a payment method and refresh the store if there are any active listeners.
-  Future<Map<String, dynamic>> attachPaymentMethod(String paymentMethodId) async {
-    final paymentMethodFuture = await _customerSession.attachPaymentMethod(paymentMethodId);
-    await refresh();
+  Future<Map> attachPaymentMethod(String paymentMethodId) {
+    final paymentMethodFuture = _customerSession.attachPaymentMethod(paymentMethodId);
+    refresh();
     return paymentMethodFuture;
   }
 
   /// Detach a payment method and refresh the store if there are any active listeners.
-  Future<Map> detachPaymentMethod(String paymentMethodId) async {
-    final paymentMethodFuture = await _customerSession.detachPaymentMethod(paymentMethodId);
-    await refresh();
+  Future<Map> detachPaymentMethod(String paymentMethodId) {
+    final paymentMethodFuture = _customerSession.detachPaymentMethod(paymentMethodId);
+    refresh();
     return paymentMethodFuture;
   }
 
   /// Refresh the store if there are any active listeners.
-  Future<void> refresh() async {
+  Future<void> refresh() {
     if (!hasListeners) return Future.value();
 
     final paymentMethodFuture = _customerSession.listPaymentMethods(limit: 100);
-    isLoading = true;
-    notifyListeners();
     return paymentMethodFuture.then((value) {
       final List listData = value['data'] ?? <PaymentMethod>[];
       paymentMethods.clear();
       if (listData.isNotEmpty) {
-        paymentMethods.addAll(listData
-            .map((item) => PaymentMethod(item['id'], item['card']['last4'], item['card']['brand'],
-                DateTime(item['card']['exp_year'], item['card']['exp_month'])))
-            .toList());
+        paymentMethods.addAll(
+            listData.map((item) => PaymentMethod(item['id'], item['card']['last4'], item['card']['brand'])).toList());
       }
-    }).whenComplete(() {
-      isLoading = false;
       notifyListeners();
     });
   }

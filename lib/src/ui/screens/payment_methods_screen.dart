@@ -1,3 +1,5 @@
+
+
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 
@@ -6,48 +8,73 @@ import '../../ui/stores/payment_method_store.dart';
 import '../progress_bar.dart';
 import 'add_payment_method_screen.dart';
 
-class PaymentMethodsScreen extends StatelessWidget {
+class PaymentMethodsScreen extends StatefulWidget {
   final String title;
+  final CreateSetupIntent createSetupIntent;
 
   /// The payment method store to use.
   final PaymentMethodStore _paymentMethodStore;
 
-  static Route<void> route({String title = '', PaymentMethodStore? paymentMethodStore}) {
-    return MaterialPageRoute(
-        builder: (context) => PaymentMethodsScreen(
-              title: title,
-              paymentMethodStore: paymentMethodStore,
-            ));
-  }
-
-  PaymentMethodsScreen({Key? key, this.title = 'Payment Methods', PaymentMethodStore? paymentMethodStore})
+  PaymentMethodsScreen(
+      {Key? key,
+      required this.createSetupIntent,
+      this.title = 'Payment Methods',
+      PaymentMethodStore? paymentMethodStore})
       : _paymentMethodStore = paymentMethodStore ?? PaymentMethodStore(),
         super(key: key);
 
   @override
+  _PaymentMethodsScreenState createState() => _PaymentMethodsScreenState();
+}
+
+// ignore: deprecated_member_use_from_same_package
+class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
+  List<PaymentMethod>? paymentMethods; // TODO not used -> remove?
+
+  @override
   Widget build(BuildContext context) {
     final stripe = Stripe.instance;
+
     return Scaffold(
       appBar: AppBar(
         backwardsCompatibility: false,
-        title: Text(title),
+        title: Text(widget.title),
         actions: <Widget>[
           IconButton(
-            icon: const Icon(Icons.add),
+            icon: Icon(Icons.add),
             onPressed: () async {
-              await Navigator.push(
+              final added = await Navigator.push(
                   context,
                   MaterialPageRoute(
                       builder: (context) =>
-                          AddPaymentMethodScreen(stripe: stripe, paymentMethodStore: _paymentMethodStore)));
+                          AddPaymentMethodScreen.withSetupIntent(widget.createSetupIntent, stripe: stripe)));
+              if (added == true) await widget._paymentMethodStore.refresh();
             },
           )
         ],
       ),
       body: PaymentMethodsList(
-        paymentMethodStore: _paymentMethodStore,
+        paymentMethodStore: widget._paymentMethodStore,
       ),
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget._paymentMethodStore.addListener(_paymentMethodStoreListener);
+  }
+
+  @override
+  void dispose() {
+    widget._paymentMethodStore.removeListener(_paymentMethodStoreListener);
+    super.dispose();
+  }
+
+  void _paymentMethodStoreListener() {
+    if (mounted) {
+      setState(() => paymentMethods = widget._paymentMethodStore.paymentMethods);
+    }
   }
 }
 
@@ -55,64 +82,35 @@ class PaymentMethod {
   final String id;
   final String last4;
   final String brand;
-  final DateTime expirationDate;
 
-  const PaymentMethod(this.id, this.last4, this.brand, this.expirationDate);
-
-  String getExpirationAsString() {
-    return '${expirationDate.month}/${expirationDate.year}';
-  }
+  PaymentMethod(this.id, this.last4, this.brand);
 }
 
-class PaymentMethodsList extends StatefulWidget {
+class PaymentMethodsList extends StatelessWidget {
   final PaymentMethodStore paymentMethodStore;
 
   const PaymentMethodsList({Key? key, required this.paymentMethodStore}) : super(key: key);
 
   @override
-  _PaymentMethodsListState createState() => _PaymentMethodsListState();
-}
-
-class _PaymentMethodsListState extends State<PaymentMethodsList> {
-  List<PaymentMethod> paymentMethods = [];
-
-  @override
-  void initState() {
-    super.initState();
-    setState(() => paymentMethods = widget.paymentMethodStore.paymentMethods);
-    widget.paymentMethodStore.addListener(_paymentMethodStoreListener);
-  }
-
-  @override
-  void dispose() {
-    widget.paymentMethodStore.removeListener(_paymentMethodStoreListener);
-    super.dispose();
-  }
-
-  void _paymentMethodStoreListener() {
-    if (mounted) {
-      setState(() => paymentMethods = widget.paymentMethodStore.paymentMethods);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final List<PaymentMethod> listData = paymentMethodStore.paymentMethods;
     return RefreshIndicator(
-      onRefresh: () async => await widget.paymentMethodStore.refresh(),
-      child: buildListView(paymentMethods, widget.paymentMethodStore, context),
+      onRefresh: () => paymentMethodStore.refresh(),
+      child: buildListView(listData, paymentMethodStore, context),
     );
   }
 
   Widget buildListView(List<PaymentMethod> listData, PaymentMethodStore paymentMethods, BuildContext rootContext) {
-    if (paymentMethods.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+    if (listData.isEmpty) {
+      // TODO: loading indicator
+      return SizedBox();
     } else {
       return ListView.builder(
           itemCount: listData.length,
           itemBuilder: (BuildContext context, int index) {
             final card = listData[index];
             return Slidable(
-              actionPane: const SlidableDrawerActionPane(),
+              actionPane: SlidableDrawerActionPane(),
               actions: <Widget>[
 //                IconSlideAction(
 //                  icon: Icons.edit,
@@ -131,29 +129,26 @@ class _PaymentMethodsListState extends State<PaymentMethodsList> {
                         context: rootContext,
                         builder: (BuildContext context) {
                           return AlertDialog(
-                            title: const Text('Delete payment method'),
-                            content: const Text('Are you sure you want to delete this payment method?'),
+                            title: Text('Delete payment method'),
+                            content: Text('Are you sure you want to delete this payment method?'),
                             actions: <Widget>[
                               TextButton(
                                 onPressed: () => Navigator.pop(rootContext),
-                                child: const Text('Cancel'),
+                                child: Text('Cancel'),
                               ),
                               TextButton(
                                 onPressed: () async {
                                   Navigator.pop(rootContext);
                                   showProgressDialog(rootContext);
 
-                                  await widget.paymentMethodStore.detachPaymentMethod(card.id);
+                                  await paymentMethodStore.detachPaymentMethod(card.id);
                                   hideProgressDialog(rootContext);
                                   await paymentMethods.refresh();
-                                  ScaffoldMessenger.of(rootContext)
-                                    ..clearSnackBars()
-                                    ..showSnackBar(const SnackBar(
-                                      content: Text('Payment method successfully deleted.'),
-                                    ));
+                                  ScaffoldMessenger.of(rootContext).showSnackBar(SnackBar(
+                                    content: Text('Payment method successfully deleted.'),
+                                  ));
                                 },
-                                child: const Text('Delete'),
-                              ),
+                                child: Text('Delete'),),
                             ],
                           );
                         });
@@ -166,7 +161,7 @@ class _PaymentMethodsListState extends State<PaymentMethodsList> {
 //              onTap: () => defaultPaymentMethod.set(card.id),
                   subtitle: Text('**** **** **** ${card.last4}'),
                   title: Text(card.brand.toUpperCase()),
-                  leading: const Icon(Icons.credit_card),
+                  leading: Icon(Icons.credit_card),
 //              trailing: card.id == defaultPaymentMethod.paymentMethodId ? Icon(Icons.check_circle) : null,
                 ),
               ),

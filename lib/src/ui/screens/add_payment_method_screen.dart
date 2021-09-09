@@ -1,6 +1,7 @@
+
+
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:stripe_sdk/src/ui/stores/payment_method_store.dart';
 
@@ -8,10 +9,10 @@ import '../../models/card.dart';
 import '../../stripe.dart';
 import '../models.dart';
 import '../progress_bar.dart';
-import '../stripe_ui.dart';
 import '../widgets/card_form.dart';
 
 ///
+typedef CreateSetupIntent = Future<IntentResponse> Function();
 
 /// A screen that collects, creates and attaches a payment method to a stripe customer.
 ///
@@ -21,54 +22,60 @@ class AddPaymentMethodScreen extends StatefulWidget {
   final Stripe _stripe;
 
   /// Used to create a setup intent when required.
-  final createSetupIntent = StripeUiOptions.createSetupIntent;
+  final CreateSetupIntent? _createSetupIntent;
+
+  /// True if a setup intent should be used to set up the payment method.
+  final bool _useSetupIntent;
 
   /// The payment method store used to manage payment methods.
   final PaymentMethodStore _paymentMethodStore;
 
   /// The card form used to collect payment method details.
-  final CardForm _form;
+  final CardForm? form;
 
   /// Custom Title for the screen
   final String title;
   static const String _defaultTitle = 'Add payment method';
 
-  static Route<String?> route(
-      {PaymentMethodStore? paymentMethodStore, Stripe? stripe, CardForm? form, String title = _defaultTitle}) {
-    return MaterialPageRoute(
-      builder: (context) => AddPaymentMethodScreen(
-        paymentMethodStore: paymentMethodStore,
-        stripe: stripe,
-        form: form,
-        title: title,
-      ),
-    );
-  }
-
   /// Add a payment method using a Stripe Setup Intent
-  AddPaymentMethodScreen(
-      {Key? key, PaymentMethodStore? paymentMethodStore, Stripe? stripe, CardForm? form, this.title = _defaultTitle})
-      : _form = form ?? CardForm(),
+  AddPaymentMethodScreen.withSetupIntent(this._createSetupIntent,
+      {PaymentMethodStore? paymentMethodStore, Stripe? stripe, this.form, this.title = _defaultTitle})
+      : _useSetupIntent = true,
         _paymentMethodStore = paymentMethodStore ?? PaymentMethodStore.instance,
-        _stripe = stripe ?? Stripe.instance,
-        super(key: key);
+        _stripe = stripe ?? Stripe.instance;
+
+  /// Add a payment method without using a Stripe Setup Intent
+  @Deprecated(
+      'Setting up payment methods without a setup intent is not recommended by Stripe. Consider using [withSetupIntent]')
+  AddPaymentMethodScreen.withoutSetupIntent({PaymentMethodStore? paymentMethodStore, Stripe? stripe, this.form, this.title = _defaultTitle})
+      : _useSetupIntent = false,
+        _createSetupIntent = null,
+        _paymentMethodStore = paymentMethodStore ?? PaymentMethodStore.instance,
+        _stripe = stripe ?? Stripe.instance;
 
   @override
-  _AddPaymentMethodScreenState createState() => _AddPaymentMethodScreenState();
+  _AddPaymentMethodScreenState createState() => _AddPaymentMethodScreenState(form ?? CardForm());
 }
 
 class _AddPaymentMethodScreenState extends State<AddPaymentMethodScreen> {
-  late final StripeCard _cardData;
-  late final GlobalKey<FormState> _formKey;
+  final StripeCard _cardData;
+  final GlobalKey<FormState> _formKey;
+  final CardForm _form;
 
-  Future<IntentClientSecret>? setupIntentFuture;
+  late IntentResponse setupIntent;
+
+  _AddPaymentMethodScreenState(this._form)
+      : _cardData = _form.card,
+        _formKey = _form.formKey;
 
   @override
   void initState() {
-    if (widget.createSetupIntent != null) setupIntentFuture = widget.createSetupIntent!();
-    _cardData = widget._form.card;
-    _formKey = widget._form.formKey;
+    _createSetupIntent();
     super.initState();
+  }
+
+  void _createSetupIntent() async {
+    if (widget._useSetupIntent) setupIntent = await widget._createSetupIntent!();
   }
 
   @override
@@ -79,72 +86,42 @@ class _AddPaymentMethodScreenState extends State<AddPaymentMethodScreen> {
           title: Text(widget.title),
           actions: <Widget>[
             IconButton(
-              icon: const Icon(Icons.check),
+              icon: Icon(Icons.check),
               onPressed: () async {
-                final formState = _formKey.currentState;
+                FormState? formState = _formKey.currentState;
                 if (formState?.validate() ?? false) {
                   formState!.save();
 
-                  await _createPaymentMethod(context, _cardData);
+                  showProgressDialog(context);
+
+                  var paymentMethod = await widget._stripe.api.createPaymentMethodFromCard(_cardData);
+                  if (widget._useSetupIntent) {
+                    final createSetupIntentResponse = this.setupIntent;
+                    final setupIntent = await widget._stripe.confirmSetupIntent(
+                      createSetupIntentResponse.clientSecret,
+                      paymentMethod['id'],
+                    );
+
+                    hideProgressDialog(context);
+                    if (setupIntent['status'] == 'succeeded') {
+                      /// A new payment method has been attached, so refresh the store.
+                      // ignore: unawaited_futures
+                      widget._paymentMethodStore.refresh();
+                      Navigator.pop(context, true);
+                      return;
+                    }
+                  } else {
+                    paymentMethod = await (widget._paymentMethodStore.attachPaymentMethod(paymentMethod['id']) as FutureOr<Map<String, dynamic>>);
+                    hideProgressDialog(context);
+                    Navigator.pop(context, true);
+                    return;
+                  }
+                  Navigator.pop(context, false);
                 }
               },
             )
           ],
         ),
-        body: Column(
-          children: [
-            widget._form,
-            if (!kReleaseMode)
-              Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Wrap(
-                  children: [
-                    _createTestCardButton("4242424242424242"),
-                    _createTestCardButton("4000000000003220"),
-                    _createTestCardButton("4000000000003063"),
-                    _createTestCardButton("4000008400001629"),
-                    _createTestCardButton("4000008400001280"),
-                    _createTestCardButton("4000000000003055"),
-                    _createTestCardButton("4000000000003097"),
-                    _createTestCardButton("378282246310005"),
-                  ],
-                ),
-              )
-          ],
-        ));
-  }
-
-  Widget _createTestCardButton(String number) {
-    return OutlinedButton(
-        child: Text(number.substring(number.length - 4)),
-        onPressed: () =>
-            _createPaymentMethod(context, StripeCard(number: number, cvc: "123", expMonth: 1, expYear: 2030)));
-  }
-
-  Future<void> _createPaymentMethod(BuildContext context, StripeCard cardData) async {
-    showProgressDialog(context);
-    var paymentMethod = await widget._stripe.api.createPaymentMethodFromCard(cardData);
-    if (setupIntentFuture != null) {
-      final initialSetupIntent = await setupIntentFuture!;
-      final confirmedSetupIntent = await widget._stripe
-          .confirmSetupIntent(initialSetupIntent.clientSecret, paymentMethod['id'], context: context);
-      hideProgressDialog(context);
-
-      if (confirmedSetupIntent['status'] == 'succeeded') {
-        /// A new payment method has been attached, so refresh the store.
-        await widget._paymentMethodStore.refresh();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Payment method successfully added.")));
-        Navigator.pop(context, paymentMethod['id']);
-        return;
-      } else {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("Authentication failed, please try again.")));
-      }
-    } else {
-      paymentMethod = await (widget._paymentMethodStore.attachPaymentMethod(paymentMethod['id']));
-      hideProgressDialog(context);
-      Navigator.pop(context, paymentMethod['id']);
-      return;
-    }
+        body: _form);
   }
 }

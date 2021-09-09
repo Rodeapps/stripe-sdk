@@ -1,6 +1,6 @@
-class IntentClientSecret {
+class IntentResponse {
+  final String status;
   final String clientSecret;
-  final String? status;
 
-  IntentClientSecret(this.status, this.clientSecret);
+  IntentResponse(this.status, this.clientSecret);
 }

@@ -1,6 +1,6 @@
 
 
-const String nullValue = 'null';
+const String NULL = 'null';
 
 /// Calls through to {@link JSONObject#optString(String)} while safely
 /// converting the raw string "null" and the empty string to {@code null}. Will not throw
@@ -63,5 +63,5 @@ String? optCurrency(Map<String, dynamic> json, String fieldName) {
 
 ///
 String? nullIfNullOrEmpty(String possibleNull) {
-  return ((nullValue == possibleNull) || (possibleNull.isEmpty)) ? null : possibleNull;
+  return ((NULL == possibleNull) || (possibleNull.isEmpty)) ? null : possibleNull;
 }

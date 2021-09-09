@@ -1,3 +1,5 @@
+
+
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -54,12 +56,12 @@ class _CardExpiryFormFieldState extends State<CardExpiryFormField> {
 
     return TextFormField(
       validator: widget.validator,
-      initialValue: initialMaskFormatter.formatEditUpdate(const TextEditingValue(), TextEditingValue(text: initial)).text,
-      autofillHints: const [AutofillHints.creditCardExpirationDate],
+      initialValue: initialMaskFormatter.formatEditUpdate(TextEditingValue(), TextEditingValue(text: initial)).text,
+      autofillHints: [AutofillHints.creditCardExpirationDate],
       onChanged: (text) {
         final arr = text.split('/');
         final month = int.tryParse(arr[0]);
-        int? year;
+        var year;
         if (arr.length == 2) {
           year = int.tryParse(arr[1]);
         }
@@ -76,6 +78,7 @@ class _CardExpiryFormFieldState extends State<CardExpiryFormField> {
       decoration: widget.decoration,
       keyboardType: TextInputType.number,
       textInputAction: TextInputAction.next,
+      onFieldSubmitted: (value) => FocusScope.of(context).nextFocus(),
     );
   }
 }

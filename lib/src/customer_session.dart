@@ -1,3 +1,5 @@
+
+
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -6,7 +8,7 @@ import 'ephemeral_key_manager.dart';
 import 'stripe_api_handler.dart';
 
 class CustomerSession extends ChangeNotifier {
-  static const int keyRefreshBufferInSeconds = 30;
+  static final int keyRefreshBufferInSeconds = 30;
 
   static CustomerSession? _instance;
 
@@ -18,18 +20,18 @@ class CustomerSession extends ChangeNotifier {
   bool isDisposed = false;
 
   /// Create a new CustomerSession instance. Use this if you prefer to manage your own instances.
-  CustomerSession._(EphemeralKeyProvider provider, {this.apiVersion = defaultApiVersion, String? stripeAccount})
+  CustomerSession._(EphemeralKeyProvider provider, {this.apiVersion = DEFAULT_API_VERSION, String? stripeAccount})
       : _keyManager = EphemeralKeyManager(provider, keyRefreshBufferInSeconds),
         _apiHandler = StripeApiHandler(stripeAccount: stripeAccount) {
     _apiHandler.apiVersion = apiVersion;
-    _instance = this;
+    _instance ??= this;
   }
 
   /// Initiate the customer session singleton instance.
   /// If [prefetchKey] is true, fetch the ephemeral key immediately.
   static void initCustomerSession(EphemeralKeyProvider provider,
-      {String apiVersion = defaultApiVersion, String? stripeAccount, bool prefetchKey = true}) {
-    CustomerSession._(provider, apiVersion: apiVersion, stripeAccount: stripeAccount);
+      {String apiVersion = DEFAULT_API_VERSION, String? stripeAccount, prefetchKey = true}) {
+    _instance = CustomerSession._(provider, apiVersion: apiVersion, stripeAccount: stripeAccount);
     if (prefetchKey) {
       _instance!._keyManager.retrieveEphemeralKey();
     }
@@ -54,7 +56,8 @@ class CustomerSession extends ChangeNotifier {
   /// Get the current customer session
   static CustomerSession get instance {
     if (_instance == null) {
-      throw Exception('Attempted to get instance of CustomerSession before initialization. Please initialize a new session using [CustomerSession.initCustomerSession() first.]');
+      throw Exception('Attempted to get instance of CustomerSession before initialization.'
+          'Please initialize a new session using [CustomerSession.initCustomerSession() first.]');
     }
     assert(_instance!._assertNotDisposed());
     return _instance!;
@@ -72,14 +75,14 @@ class CustomerSession extends ChangeNotifier {
   /// List a Customer's PaymentMethods.
   /// https://stripe.com/docs/api/payment_methods/list
   Future<Map<String, dynamic>> listPaymentMethods(
-      {type = 'card', int? limit, String? endingBefore, String? startingAfter}) async {
+      {type = 'card', int? limit, String? ending_before, String? starting_after}) async {
     assert(_assertNotDisposed());
     final EphemeralKey key = await (_keyManager.retrieveEphemeralKey());
-    const path = '/payment_methods';
+    final path = '/payment_methods';
     final params = {'customer': key.customerId, 'type': type};
     if (limit != null) params['limit'] = limit;
-    if (startingAfter != null) params['starting_after'] = startingAfter;
-    if (endingBefore != null) params['ending_before'] = endingBefore;
+    if (starting_after != null) params['starting_after'] = starting_after;
+    if (ending_before != null) params['ending_before'] = ending_before;
     return _apiHandler.request(RequestMethod.get, path, key.secret, apiVersion, params: params);
   }
 

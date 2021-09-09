@@ -1,3 +1,5 @@
+
+
 import 'dart:async';
 
 import 'models/card.dart';
@@ -17,12 +19,12 @@ class StripeApi {
   /// Create a new instance, which can be used with e.g. dependency injection.
   /// Throws a [Exception] if an invalid [publishableKey] has been submitted.
   ///
-  /// [publishableKey] is your publishable key, beginning with "pk_".
+  /// [publishableKey] is your publishable key, beginning with "sk_".
   /// Your can copy your key from https://dashboard.stripe.com/account/apikeys
   ///
   /// [stripeAccount] is the id of a stripe customer and stats with "cus_".
   /// This is a optional parameter.
-  StripeApi(this.publishableKey, {this.apiVersion = defaultApiVersion, String? stripeAccount})
+  StripeApi(this.publishableKey, {this.apiVersion = DEFAULT_API_VERSION, String? stripeAccount})
       : _apiHandler = StripeApiHandler(stripeAccount: stripeAccount) {
     _validateKey(publishableKey);
     _apiHandler.apiVersion = apiVersion;
@@ -31,12 +33,12 @@ class StripeApi {
   /// Initialize the managed singleton instance of [StripeApi].
   /// Afterwards you can use [StripeApi.instance] to access the created instance.
   ///
-  /// [publishableKey] is your publishable key, beginning with "pk_".
+  /// [publishableKey] is your publishable key, beginning with "sk_".
   /// Your can copy your key from https://dashboard.stripe.com/account/apikeys
   ///
   /// [stripeAccount] is the id of a stripe customer and stats with "cus_".
   /// This is a optional parameter.
-  static void init(String publishableKey, {String apiVersion = defaultApiVersion, String? stripeAccount}) {
+  static void init(String publishableKey, {String apiVersion = DEFAULT_API_VERSION, String? stripeAccount}) {
     _instance ??= StripeApi(publishableKey, apiVersion: apiVersion, stripeAccount: stripeAccount);
   }
 
@@ -52,14 +54,14 @@ class StripeApi {
   /// Create a stripe Token
   /// https://stripe.com/docs/api/tokens
   Future<Map<String, dynamic>> createToken(Map<String, dynamic> data) async {
-    const path = '/tokens';
+    final path = '/tokens';
     return _apiHandler.request(RequestMethod.post, path, publishableKey, apiVersion, params: data);
   }
 
   /// Create a PaymentMethod.
   /// https://stripe.com/docs/api/payment_methods/create
   Future<Map<String, dynamic>> createPaymentMethod(Map<String, dynamic> data) async {
-    const path = '/payment_methods';
+    final path = '/payment_methods';
     return _apiHandler.request(RequestMethod.post, path, publishableKey, apiVersion, params: data);
   }
 
@@ -74,7 +76,7 @@ class StripeApi {
   /// Create a new Source object.
   /// https://stripe.com/docs/api/sources/create
   Future<Map<String, dynamic>> createSource(Map<String, dynamic> data) async {
-    const path = '/sources';
+    final path = '/sources';
     return _apiHandler.request(RequestMethod.post, path, publishableKey, apiVersion, params: data);
   }
 
@@ -89,8 +91,7 @@ class StripeApi {
 
   /// Confirm a PaymentIntent
   /// https://stripe.com/docs/api/payment_intents/confirm
-  Future<Map<String, dynamic>> confirmPaymentIntent(String clientSecret, {Map<String, dynamic>? data}) async {
-    data ??= {};
+  Future<Map<String, dynamic>> confirmPaymentIntent(String clientSecret, {Map<String, dynamic> data = const {}}) async {
     final intent = _parseIdFromClientSecret(clientSecret);
     data['client_secret'] = clientSecret;
     final path = '/payment_intents/$intent/confirm';
@@ -108,8 +109,7 @@ class StripeApi {
 
   /// Confirm a SetupIntent
   /// https://stripe.com/docs/api/setup_intents/confirm
-  Future<Map<String, dynamic>> confirmSetupIntent(String clientSecret, {Map<String, dynamic>? data}) async {
-    data ??= {};
+  Future<Map<String, dynamic>> confirmSetupIntent(String clientSecret, {Map<String, dynamic> data = const {}}) async {
     final intent = _parseIdFromClientSecret(clientSecret);
     data['client_secret'] = clientSecret;
     final path = '/setup_intents/$intent/confirm';
